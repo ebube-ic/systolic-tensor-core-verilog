@@ -1,0 +1,21 @@
+# Vivado auto-generated folders
+*.runs/
+*.sim/
+*.ip_user_files/
+*.hw/
+*.cache/
+*.gen/
+
+# Log, journal, and lock files
+*.log
+*.jou
+*.str
+*.xpr.bak
+*.dcp
+*.wcfg
+*.vcd
+clockInfo.txt
+
+# OS metadata
+.DS_Store
+Thumbs.db
