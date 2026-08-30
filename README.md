@@ -30,6 +30,25 @@ A scalable, autonomous 2D Systolic Array matrix-matrix multiplication (GEMM) acc
 
 
 
+## Dataflow Architecture
+
+The tensor core executes a synchronized 2D output-stationary matrix multiplication ($C = A \times B$):
+
+* **Matrix B (Weights - North Inputs)**: 
+  Streams vertically into column ports `b0_raw` through `b3_raw`. The input skew buffer introduces a progressive delay of $k$ cycles to Column $k$, staggering the weights to meet the compute wavefront.
+* **Matrix A (Activations - West Inputs)**: 
+  Streams horizontally into row ports `a0_raw` through `a3_raw`. The input skew buffer introduces a progressive delay of $k$ cycles to Row $k$, ensuring activations align spatially with corresponding weights.
+* **Processing Element (PE) Mesh**: 
+  A 2D array of 16 PEs where each unit contains an INT8 MAC engine. Activations flow East, weights flow South, and partial products accumulate in local 32-bit stationary registers.
+* **Wavefront Alignment**: 
+  Full matrix execution finishes in $3N - 2 = 10\text{ cycles}$ for a $4 \times 4$ array, after which `valid_out` pulses high to signal that all 16 accumulators hold settled results.
+
+
+
+\---
+
+
+
 \## Module Breakdown
 
 
