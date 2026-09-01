@@ -50,7 +50,9 @@ For an $N \times N$ matrix multiplication, data propagates through the grid alon
 
 ---
 
-## Simulation & Verification
+## Simulation & Waveform Verification
+
+![Vivado Simulation Waveform](./Waveform.png)
 
 Verified using **AMD Vivado Simulator (XSim)**.
 
