@@ -18,4 +18,25 @@ clockInfo.txt
 
 # OS metadata
 .DS_Store
-Thumbs.db
+Thumbs.db# Vivado Junk
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.jou
+*.log
+*.wcfg
+*.str
+ai_tensor_core.srcs/
+# Vivado Junk
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.jou
+*.log
+*.wcfg
+*.str
+ai_tensor_core.srcs/
