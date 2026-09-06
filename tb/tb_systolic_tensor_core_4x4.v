@@ -4,18 +4,22 @@ module tb_systolic_tensor_core_4x4;
     reg tb_clk;
     reg tb_reset;
     reg tb_start;
+    reg tb_relu_en;
     reg signed [7:0] tb_a0_raw, tb_a1_raw, tb_a2_raw, tb_a3_raw;
     reg signed [7:0] tb_b0_raw, tb_b1_raw, tb_b2_raw, tb_b3_raw;
-    wire signed [31:0] tb_c00, tb_c01, tb_c02, tb_c03;
-    wire signed [31:0] tb_c10, tb_c11, tb_c12, tb_c13;
-    wire signed [31:0] tb_c20, tb_c21, tb_c22, tb_c23;
-    wire signed [31:0] tb_c30, tb_c31, tb_c32, tb_c33;
+    wire signed [7:0] tb_c00, tb_c01, tb_c02, tb_c03;
+    wire signed [7:0] tb_c10, tb_c11, tb_c12, tb_c13;
+    wire signed [7:0] tb_c20, tb_c21, tb_c22, tb_c23;
+    wire signed [7:0] tb_c30, tb_c31, tb_c32, tb_c33;
     wire tb_valid_out;
     
-    systolic_tensor_core_4x4 uut (
+    systolic_tensor_core_4x4 #(
+        .SCALE_SHIFT(0)
+    ) uut (
         .clk(tb_clk),
         .reset(tb_reset),
         .start(tb_start),
+        .relu_en(tb_relu_en),
         .a0_raw(tb_a0_raw), .a1_raw(tb_a1_raw), .a2_raw(tb_a2_raw), .a3_raw(tb_a3_raw),
         .b0_raw(tb_b0_raw), .b1_raw(tb_b1_raw), .b2_raw(tb_b2_raw), .b3_raw(tb_b3_raw),
         .c00(tb_c00), .c01(tb_c01), .c02(tb_c02), .c03(tb_c03),
@@ -33,6 +37,7 @@ module tb_systolic_tensor_core_4x4;
     initial begin 
         tb_reset = 1'b1;
         tb_start = 1'b0;
+        tb_relu_en = 1'b0;
         tb_a0_raw = 8'sd0; tb_a1_raw = 8'sd0; tb_a2_raw = 8'sd0; tb_a3_raw = 8'sd0;
         tb_b0_raw = 8'sd0; tb_b1_raw = 8'sd0; tb_b2_raw = 8'sd0; tb_b3_raw = 8'sd0;
         #20;
@@ -41,7 +46,6 @@ module tb_systolic_tensor_core_4x4;
         #10;
         tb_start = 1'b1;
         #10;
-        
         tb_start = 1'b0;
         #10;
         

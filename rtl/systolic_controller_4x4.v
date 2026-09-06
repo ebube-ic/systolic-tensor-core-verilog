@@ -43,7 +43,7 @@ module systolic_controller_4x4(
                 next_state <= S_COMPUTE;
             end
             S_COMPUTE: begin 
-                if (cycle_count == 4'd9) begin 
+                if (cycle_count == 4'd10) begin 
                     next_state <= S_DONE;
                 end
             end
