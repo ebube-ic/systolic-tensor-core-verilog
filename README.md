@@ -72,3 +72,15 @@ The controller responds to `start`, clears internal state, and streams matrix in
 * **Result:** Output lines `c00` through `c33` settle simultaneously on `valid_out = 1`, producing matrix $A$ in signed INT8 precision with zero overflow or transposition errors.
 
 ![Output Deskew Waveform](./Waveform2.png)
+
+---
+
+### Hardware Synthesis & Implementation (AMD Artix-7)
+
+Synthesized using AMD Vivado for the **XC7A100T-CSG324-1** FPGA target:
+* **Target Frequency:** 100 MHz (10.0 ns period)
+* **Worst Negative Slack (WNS):** +2.391 ns (Met, 0 failing endpoints)
+* **Maximum Operating Frequency ($F_{\max}$):** 131.42 MHz
+* **Logic Utilization:** 2,516 LUTs (3.97%), 1,902 FFs (1.50%)
+* **Shift Register Memory:** 320 SRL16E primitives inferred for skew/deskew networks
+* **Internal Precision:** 32-bit internal accumulation mapped with 448 fast CARRY4 chains
