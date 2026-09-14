@@ -1,86 +1,116 @@
-# Parameterized 2D Systolic Tensor Core in Verilog
+# Parameterized 2D Systolic Tensor Core with AXI4-Lite Interface
 
-A scalable, autonomous 2D Systolic Array matrix-matrix multiplication (GEMM) accelerator designed in synthesizable Verilog for FPGA neural network inferencing.
+A scalable, synthesizable 2D Systolic Array matrix-matrix multiplication (GEMM) accelerator designed in SystemVerilog for edge AI inferencing and hardware-accelerated linear algebra. The architecture integrates an autonomous compute mesh, wavefront deskew networks, fused INT8 post-processing quantization, dual ping-pong memory buffers, and a memory-mapped AXI4-Lite host slave interface.
 
 ---
 
 ## Architectural Highlights
 
-* **Precision:** INT8 signed operands (activations and weights), 32-bit signed internal accumulation, and quantized INT8 activation outputs.
-* **Scalable 2D Mesh:** Parameterized systolic array ($N \times N$) instantiated using Verilog modular interconnects.
-* **Wavefront Synchronization:** Hardware input skew buffers align parallel matrix streams automatically into the diagonal processing wavefront.
-* **2D Output Deskew Network:** Staggered output completion delays are realigned using coordinate-based shift registers $(3-i) + (3-j)$, presenting all 16 results simultaneously.
-* **Fused Quantization & Activation:** Integrated post-processing unit providing parameterizable arithmetic right-shift scaling (`SCALE_SHIFT`), saturation clamping ($[-128, +127]$), and zero-overhead fused ReLU.
-* **Autonomous Timing Controller:** Moore FSM coordinating zero-clearing, runtime execution, and valid strobing across the precise compute and deskew latency window.
-* **Output Stationary:** Intermediate results accumulate locally within each Processing Element to minimize interconnect routing congestion.
+* **Precision:** Signed INT8 operands (activations and weights), 32-bit signed internal accumulation, and quantized signed INT8 activation outputs.
+* **Scalable 2D Mesh:** Parameterized systolic array ($N \times N$) instantiated with nearest-neighbor spatial pipeline interconnects.
+* **Output-Stationary Dataflow:** Dot products accumulate locally within each Processing Element (PE) register to minimize global interconnect switching and power dissipation.
+* **Wavefront Synchronization:** 
+  * **Input Skew Network:** Progressive $k$-cycle shift registers align incoming matrix streams into diagonal processing wavefronts.
+  * **2D Output Deskew Network:** Coordinate-delay shift registers compensating $(2N - 2) - (i + j)$ cycles present all $N \times N$ results simultaneously on the exact same clock edge.
+* **Fused Quantization & Activation:** Integrated post-processing pipeline executing runtime-configurable arithmetic right-shift scaling (`shift_val`), saturation clamping ($[-128, +127]$), and zero-overhead ReLU activation.
+* **Decoupled Memory Staging:** Dual ping-pong memory banks isolate host AXI write transactions from active systolic compute cycles.
+* **System-on-Chip Bus Integration:** Memory-mapped **AXI4-Lite Slave** interface supporting standard CPU register transactions for host matrix staging, execution dispatching, status polling, and row-major result extraction.
 
 ---
 
-## Dataflow Architecture
+## Hardware Architecture & RTL Elaboration
 
-The tensor core executes a synchronized 2D output-stationary matrix multiplication ($C = A \times B$):
+The design bridges domain-specific compute pipelines with standard microprocessor bus infrastructures. The top-level wrapper (`tensor_core_axi`) decodes AXI transactions, routes matrix streams into dual ping-pong RAMs, asserts execution pulses to the sequencer, and latches outputs for host readback.
 
-* **Matrix B (Weights - North Inputs):** Streams vertically into column ports `b0_raw` through `b3_raw`. The input skew buffer introduces a progressive delay of $k$ cycles to Column $k$, staggering the weights to meet the compute wavefront.
-* **Matrix A (Activations - West Inputs):** Streams horizontally into row ports `a0_raw` through `a3_raw`. The input skew buffer introduces a progressive delay of $k$ cycles to Row $k$, ensuring activations align spatially with corresponding weights.
-* **Processing Element (PE) Mesh:** A 2D array of 16 PEs where each unit contains an INT8 MAC engine. Activations flow East, weights flow South, and partial products accumulate in local 32-bit stationary registers.
-* **2D Deskew & Quantization:** Completed accumulators pass through a 2D deskew delay pipeline to align completion times across diagonals. The aligned 32-bit sums are scaled, clamped to 8-bit signed range, and activated via ReLU.
-* **Wavefront Alignment:** Full matrix execution and deskew settling finish synchronously, after which `valid_out` pulses high to signal that all 16 INT8 outputs hold final valid activations.
+### RTL Elaborated Schematic
+
+![RTL Elaborated Architecture](./RTL%20Elaboration.png)
 
 ---
 
-## Module Breakdown
+## Memory Map (AXI4-Lite Slave)
 
-| Module | Location | Description |
-| :--- | :--- | :--- |
-| `processing_element.v` | `rtl/` | Core MAC unit containing signed multiplier, accumulator, and East/South forwarding pipeline registers |
-| `systolic_array_4x4.v` | `rtl/` | 2D PE grid with nearest-neighbor spatial interconnects |
-| `input_skew_buffer_4x4.v` | `rtl/` | Shift-register delay network delaying row/column index $k$ by $k$ clock cycles |
-| `systolic_deskew_2d_4x4.v` | `rtl/` | Inverted coordinate shift-register network aligning diagonal output completion times |
-| `quantizer_unit.v` | `rtl/` | Single-channel arithmetic right-shift, saturation clamp ($[-128, +127]$), and fused ReLU |
-| `quantizer_4x4.v` | `rtl/` | Parallel 16-channel quantization wrapper converting deskewed sums to INT8 |
-| `systolic_controller_4x4.v` | `rtl/` | Moore FSM controlling synchronous clears, compute enable, and `valid_out` timing |
-| `systolic_tensor_core_4x4.v` | `rtl/` | Top-level integrated wrapper exposing unskewed parallel streaming interfaces |
-| `tb_systolic_tensor_core_4x4.v` | `tb/` | Behavioral testbench verifying full $4 \times 4$ matrix multiplication against Identity matrices |
+Base Address: `0x4000_0000` (7-bit word-aligned addressing)
+
+| Offset | Register Name | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `0x00` | **REG_CTRL**   | W     | Bit 0: `start_pulse` (self-clearing)<br>Bit 1: `swap_banks` |
+| `0x04` | **REG_STATUS** | R     | Bit 0: `busy`<br>Bit 1: `done` (latched / sticky)<br>Bit 2: `current_bank` |
+| `0x08` | **REG_CONFIG** | R/W   | Bits [3:0]: Arithmetic right-shift post-processing parameter |
+| `0x10` - `0x1C` | **MEM_A_0 .. 3** | W | Matrix A column slices (4 bytes packed little-endian per 32-bit word) |
+| `0x20` - `0x2C` | **MEM_B_0 .. 3** | W | Matrix B row slices (4 bytes packed little-endian per 32-bit word) |
+| `0x40` - `0x4C` | **OUT_ROW_0 .. 3** | R | Computed output matrix rows (4 signed INT8 values packed) |
 
 ---
 
-## Timing & Wavefront Rule
+## Timing & Wavefront Sequencing
 
 For an $N \times N$ matrix multiplication, data propagates through the grid along diagonal wavefronts:
-* **Wavefront Propagation:** Inputs are skewed by index delay ($i, j$).
+* **Wavefront Propagation:** Inputs are skewed by spatial index delay ($i, j$).
 * **Output Realignment:** Deskew stages insert $(2N - 2) - (i + j)$ cycles of compensation delay.
 * **FSM Latency Sequence:**
-  1. `S_IDLE`: Awaiting start strobe.
+  1. `S_IDLE`: Awaiting start pulse.
   2. `S_CLEAR`: 1 cycle synchronous accumulator zeroing.
-  3. `S_COMPUTE`: Active pipelined matrix MAC operations and wavefront deskewing.
-  4. `S_DONE`: 1 cycle single-pulse `valid_out` strobe upon complete parallel settling.
+  3. `S_COMPUTE`: Pipelined systolic MAC execution and deskew pipeline propagation ($3N - 1$ cycles).
+  4. `S_DONE`: Asserts done flag and latches parallel output matrix registers.
 
 ---
 
-## Simulation & Waveform Verification
+## Verification & Simulation
 
-Verified using **AMD Vivado Simulator (XSim)**.
+Verified using **AMD Vivado Simulator (XSim)** across both standalone systolic execution and full AXI bus transactions.
 
-### 1. Control Handshake & Input Skewing
-The controller responds to `start`, clears internal state, and streams matrix inputs into diagonal wavefronts:
+### 1. AXI-Lite End-to-End Handshake and Matrix Write Staging
+Demonstrating address-write handshakes, ping-pong buffer bank swapping, and accelerator execution launch across the AXI4-Lite slave interface:
 
-![Input Skew and Control Waveform](./Waveform1.png)
+![AXI Write Handshake Waveform](./Waveform1.png)
 
-### 2. Output Deskewing & Valid INT8 Output ($A \times I_4 = A$)
-* **Input A:** 4x4 matrix streaming parallel rows cycle-by-cycle.
-* **Input B:** 4x4 identity matrix ($I_4$).
-* **Result:** Output lines `c00` through `c33` settle simultaneously on `valid_out = 1`, producing matrix $A$ in signed INT8 precision with zero overflow or transposition errors.
+### 2. Output Deskew Settling & Result Readback
+The self-checking testbench (`tb_tensor_core_axi.sv`) polls status register `0x04` for execution completion, reads rows `0x40` through `0x4C`, and verifies bit-exact signed outputs against a golden matrix reference model:
 
-![Output Deskew Waveform](./Waveform2.png)
+![AXI Read and Result Waveform](./Waveform2.png)
 
 ---
 
-### Hardware Synthesis & Implementation (AMD Artix-7)
+## Physical Synthesis & Implementation (AMD Artix-7)
 
-Synthesized using AMD Vivado for the **XC7A100T-CSG324-1** FPGA target:
-* **Target Frequency:** 100 MHz (10.0 ns period)
-* **Worst Negative Slack (WNS):** +2.391 ns (Met, 0 failing endpoints)
-* **Maximum Operating Frequency ($F_{\max}$):** 131.42 MHz
-* **Logic Utilization:** 2,516 LUTs (3.97%), 1,902 FFs (1.50%)
-* **Shift Register Memory:** 320 SRL16E primitives inferred for skew/deskew networks
-* **Internal Precision:** 32-bit internal accumulation mapped with 448 fast CARRY4 chains
+Synthesized using AMD Vivado targeting the **XC7A100T-CSG324-1** FPGA:
+
+* **Target Device:** AMD Artix-7 `xc7a100tcsg324-1`
+* **Timing Closure:** All user constraints met (0 failing endpoints out of 3,277)
+* **Target Period:** 10.000 ns (100 MHz)
+* **Worst Negative Slack (WNS):** +2.067 ns
+* **Worst Hold Slack (WHS):** +0.142 ns
+* **Worst Pulse Width Slack (WPWS):** +4.500 ns
+* **Total Negative Slack (TNS):** 0.000 ns
+* **Maximum Operating Frequency ($F_{\max}$):** 126.06 MHz
+* **Slice LUT Utilization:** 4,318 / 63,400 (6.81%)
+* **Slice Register Utilization:** 3,112 / 126,800 (2.45%)
+* **Dedicated Arithmetic Carry:** 456 `CARRY4` primitives
+* **Clock Buffers:** 1 `BUFG`
+
+---
+
+## Repository Structure
+
+```text
+├── rtl/
+│   └── sv/
+│       ├── tensor_pkg.sv         # Data types, dimensions, and register macros
+│       ├── pe.sv                 # Multiply-accumulate Processing Element
+│       ├── systolic_grid.sv      # 4x4 2D spatial PE grid
+│       ├── skew_buffer.sv        # Shift register input skew alignment
+│       ├── deskew_buffer.sv      # Inverse coordinate deskew alignment
+│       ├── quant_relu.sv         # Shift, saturation clamp, and ReLU unit
+│       ├── tensor_ctrl_fsm.sv    # Master sequencer FSM
+│       ├── ping_pong_buffer.sv   # Dual-bank decoupled memory
+│       ├── tensor_core_top.sv    # Systolic accelerator engine integration
+│       └── tensor_core_axi.sv    # Memory-mapped AXI4-Lite slave wrapper
+├── tb/
+│   └── sv/
+│       ├── tb_tensor_core_axi.sv # AXI bus master self-checking testbench
+│       └── tb_tensor_core_top.sv # Core-level direct testbench
+├── RTL Elaboration.png           # Elaborated gate schematic
+├── Waveform1.png                 # AXI write and staging waveform
+├── Waveform2.png                 # AXI read and verification waveform
+└── README.md
