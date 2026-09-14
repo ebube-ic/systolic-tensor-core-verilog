@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
 
 package tensor_pkg;
-    parameter int ARRAY_SIZE = 4;
-    parameter int DATA_WIDTH = 8;
-    parameter int ACCUM_WIDTH = 32;
-    parameter int SHIFT_WIDTH = 5;
+    localparam int ARRAY_SIZE = 4;
+    localparam int DATA_WIDTH = 8;
+    localparam int ACCUM_WIDTH = 32;
+    localparam int SHIFT_WIDTH = 5;
     
     typedef logic signed [DATA_WIDTH-1:0] vec_data_t [ARRAY_SIZE];
     typedef logic signed [ACCUM_WIDTH-1:0] matrix_accum_t [ARRAY_SIZE][ARRAY_SIZE];
